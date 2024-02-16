@@ -3,47 +3,59 @@ const userHelper = require('../helpers/userHelpers');
 const jwt =require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 
-const userLogin = (req,res) => {
-    let username = req.body.username;
+
+function verifyToken(req,res,next){
+    let token = req.headers['x-access-token'];
+    if (!token) {return res.status(403).send({auth: false, message: 'No Token Provided.'})}
+    jwt.verify(token, process.env.SECRET_KEY,function(err, decoded) {
+        if (err) { return res.status(500).send({ auth: false, message: 'Failed to authenticate token.' }) }
+        else {
+            req.userId = decoded.userId;
+            next();
+        }
+    });
+  };
+  
+
+
+  const userLogin = (req, res) => {
+    let email = req.body.email;
     let password = req.body.password;
-    if(username && password){
-        userModel.findOne({username:username, password:password})
-        .then((result)=>{
-            console.log("Result : ", result);
-            if(!result){
-                res.send({status:false , message:"User Not Found"});
-                }else{
-                    // create token
-                    var token=jwt.sign({userId:result._id},process.env.SECRET_KEY,{expiresIn:'1h'});
-                    res.header("auth-token",token).send({status:true , data:{userId:result._id, token:token}});
-                    // send response with token 
-                    res.header({'auth-token':token}).send({status:true , data:{userId:result._id, name:result.name}})
-                    res.header({'auth-token':token}).send({status:true , data:{userId:result._id, name:result.name}})
-                    res.header({'auth-token':token}).send({status:true , data:{token:token, userId:result._id}})
-                    res.send({status:true , message:"User Logged In Successfully",token:token});
+
+    if (email && password) {
+        userModel.findOne({ email: email })
+            .then((user) => {
+                if (!user) {
+                    return res.send({ status: false, message: "User Not Found" });
                 }
-         })
-         .catch((err)=>console.log(err));
-     }else{
-         res.send({status:false , massage:"Please provide all details"});
-     }
-}
+
+                // Compare the provided password with the hashed password stored in the database
+                bcrypt.compare(password, user.password)
+                    .then((match) => {
+                        if (!match) {
+                            return res.send({ status: false, message: "Incorrect password" });
+                        }
+
+                        // Passwords match, create and send token
+                        var token = jwt.sign({ userId: user._id }, process.env.SECRET_KEY, { expiresIn: '1h' });
+                        res.header("auth-token", token).send({ status: true, data: { userId: user._id, token: token } });
+                    })
+                    .catch((error) => {
+                        console.error('Error comparing passwords:', error);
+                        res.status(500).json({ error: 'Internal server error' });
+                    });
+            })
+            .catch((error) => {
+                console.error('Error finding user:', error);
+                res.status(500).json({ error: 'Internal server error' });
+            });
+    } else {
+        res.send({ status: false, message: "Please provide all details" });
+    }
+};
 
 
 
-// function verifyToken(req,res,next){
-//   let token = req.headers['x-access-token'];
-//   if (!token) {return res.status(403).send({auth: false, message: 'No Token Provided.'})}
-//   jwt.verify(token, process.env.SECRET_KEY,function(err, decoded) {
-//       if (err) { return res.status(500).send({ auth: false, message: 'Failed to authenticate token.' }) }
-//       else {
-//           req.userId = decoded.userId;
-//           next();
-//       }
-//   });
-// }
-
-// module.exports.verifyToken = verifyToken;
 
 
 
@@ -93,6 +105,6 @@ const userRegister = async (req, res) => {
 
 
 
-module.exports={userRegister,userLogin}
+module.exports={userRegister,userLogin,verifyToken};
                     
 
